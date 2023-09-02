@@ -22,6 +22,11 @@ function common_config() {
   pkg1="dnf langpacks-en"
 }
 
+function bootstrap() {
+  local release=$1
+  source bootstrap-almalinux-main.sh
+}
+
 function main() {
   common_config
 
@@ -29,14 +34,12 @@ function main() {
   local d9=9.2
   local d0=$1
 
-  release=$(case $d0 in
+  bootstrap $(case $d0 in
     8) echo $d8 ;;
     9) echo $d9 ;;
     :) echo $d9 ;;
     *) echo $d0 ;;
   esac)
-
-  source bootstrap-almalinux-main.sh
 }
 
 main $(a=$@; [ "$a" == "" ] && echo : || echo $1)
