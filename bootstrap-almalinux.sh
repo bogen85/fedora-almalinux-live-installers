@@ -56,7 +56,6 @@ if [ "$release" == "8.8" ]; then
   _r1="setup-2.12.2-9 basesystem-11-5 tzdata-2023c-$minor ncurses-base-6.1-9.20180224"
 
   _r2="dnf-data-4.7.0-16.${tag}_8"
-
 fi
 
 
