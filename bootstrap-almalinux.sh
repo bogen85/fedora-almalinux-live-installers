@@ -23,8 +23,8 @@ rpms_dest=.rpms
 chroot="$sudo chroot "$root
 achroot="$sudo arch-chroot "$root
 
-pkg0="dnf"
-pkg1="langpacks-en"
+pkg0="microdnf"
+pkg1="dnf langpacks-en"
 
 if [ "$release" == "9.2" ]; then
 	baseroot=BaseOS
@@ -66,7 +66,8 @@ function use_parent_resolv_conf() {
 }
 
 dnf0="$sudo dnf -y --setopt=install_weak_deps=False --installroot=$root"
-dnf1="$achroot dnf -y"
+dnf1="$achroot microdnf -y"
+dnf2="$achroot dnf -y"
 bash="$chroot bash -c"
 
 function to_dnf_conf() {
@@ -95,6 +96,7 @@ to_dnf_conf 'exclude=java-* *-java* *jdk* javapackages-* yum'
 $bash 'rpmdb --rebuilddb'
 
 $dnf1 install $pkg1
+$dnf2 remove $pkg0
 
 $chroot cat /etc/os-release
 $chroot cat /etc/dnf/dnf.conf
