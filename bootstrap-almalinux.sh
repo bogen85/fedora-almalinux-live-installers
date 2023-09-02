@@ -3,7 +3,8 @@
 
 set -euo pipefail
 
-distro=almalinux
+dist=alma
+distro=${dist}linux
 DisTro=AlmaLinux
 release=9.2
 major=9
@@ -33,7 +34,7 @@ if [ "$release" == "9.2" ]; then
   _rpms0+=" $distro-repos-$release-$minor.$tag"
   _rpms0+=" glibc-common-2.34-60.$tag"
   _rpms0+=" glibc-langpack-en-2.34-60.$tag"
-  _rpms0+=" libgcc-11.3.1-4.3.$tag.alma"
+  _rpms0+=" libgcc-11.3.1-4.3.$tag.$dist"
   _rpms0+=" glibc-2.34-60.$tag"
   _rpms0+=" ncurses-libs-6.2-8.20210508.$tag"
   _rpms0+=" bash-5.1.8-6.${tag}_${minor}"
