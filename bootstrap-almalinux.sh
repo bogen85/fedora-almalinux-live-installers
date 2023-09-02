@@ -27,12 +27,13 @@ function main() {
 
   local d8=8.8
   local d9=9.2
+  local d0=$1
 
-  release=$(case "$1" in
+  release=$(case $d0 in
     8) echo $d8 ;;
     9) echo $d9 ;;
     :) echo $d9 ;;
-    *) echo $1 ;;
+    *) echo $d0 ;;
   esac)
 
   source bootstrap-almalinux-main.sh
