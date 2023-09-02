@@ -34,17 +34,22 @@ function bootstrap_main () {
   $chroot cat /etc/dnf/dnf.conf
 }
 
+function format_vars() {
+  local prefix=$1
+  shift
+  printf "$prefix"' %s=%s;\n' "$@"
+}
+
 function root() {
-  local root_src=/mnt/bootstrap-$distro-$release-$arch
+  local root_src=$root_prefix/$distro-$release-$arch
 
   if [ "$1" == "done" ]; then
     mount | grep -F $root_src
     return
   fi
 
-  local root=$root_src.mnt
-
   function prep_root () {
+    local root=$1
     if [ -d "$root" ]; then
       $sudo rm -rf $root/*
       $sudo umount $root -v || true
@@ -55,18 +60,26 @@ function root() {
     $sudo mount -v -o bind $root_src $root
   }
 
-  prep_root 1>&2
+  function prep_root_vars () {
+    local root=$2.mnt
 
-  chroot="$sudo chroot "$root
-  achroot="$sudo arch-chroot "$root
+    1>&2 prep_root $root
 
-  echo $1 chroot="'$chroot';"
-  echo $1 dnf0="'$sudo dnf -y --setopt=install_weak_deps=False --installroot=$root';"
-  echo $1 dnf1="'$achroot microdnf -y';"
-  echo $1 dnf2="'$achroot dnf -y';"
+    local chroot="$sudo chroot "$root
+    local achroot="$sudo arch-chroot "$root
+    local _dnf="dnf -y --setopt=install_weak_deps="
+    local dnf0="${_dnf}False"
+    local dnf1="${_dnf}0"
 
-  echo $1 bash="'$chroot bash -c';"
-  echo $1 root="$root;"
+    format_vars $1 \
+      root "'$root'" \
+      dnf0 "'$sudo $dnf0 --installroot=$root'"  \
+      dnf1 "'$achroot micro$dnf1'" \
+      dnf2 "'$achroot $dnf0'" \
+      bash "'$chroot bash -c'" \
+      chroot "'$chroot'"
+  }
+  prep_root_vars $1 $root_src
 }
 
 function get_rpms() {
@@ -95,11 +108,11 @@ function get_rpms() {
   }
 
   1>&2 mkdir -pv $rpms_dest
-  1>&2 download_rpms "$1" $arch.rpm
-  1>&2 download_rpms "$2" $tag.noarch.rpm
-  1>&2 download_rpms "$3" $dist.noarch.rpm
+  1>&2 download_rpms "$2" $arch.rpm
+  1>&2 download_rpms "$3" $tag.noarch.rpm
+  1>&2 download_rpms "$4" $dist.noarch.rpm
 
-  echo $4 rpms="'$rpms';"
+  format_vars $1 rpms "'$rpms'"
 }
 
 function use_parent_resolv_conf() {
@@ -119,13 +132,23 @@ function bootstrap() {
 
   source $conf/$distro-$release.conf
 
-  eval $(
+  function get_vars() {
     local prefix=':::'
     local match="^$prefix..*=..*;"
-    local vars0=$(get_rpms "$_r0" "$_r1" "$_r2" $prefix)
+    local vars0=$(get_rpms $prefix "$_r0" "$_r1" "$_r2")
     local vars1=$(root $prefix)
-    printf '%s' "$vars0" "$vars1" | grep "$match" | sed "s/$prefix//g" | tee /dev/stderr
-  )
+    local raw=$(printf '%s\n' "$vars0" "$vars1")
+
+    printf '%s' "$raw" | grep -v "$match" > /dev/stderr
+
+    printf \
+      '%s' "$raw" |\
+      grep "$match" |\
+      sed "s/$prefix//g" |\
+      tee /dev/stderr
+  }
+
+  eval $(get_vars)
 
   set -x
   bootstrap_main
