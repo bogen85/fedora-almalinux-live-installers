@@ -4,31 +4,137 @@
 set -euo pipefail
 export BASHOPTS SHELLOPTS
 
-function common_config() {
-  dist=alma
-  distro=${dist}linux
-  DisTro=AlmaLinux
-  baseroot=BaseOS
-  os_packages=os/Packages
-
-  arch=$(uname -m)
-
-  echo arch=$arch
-
-  sudo=sudo
-  rpms_dest=.rpms
-
-  pkg0="microdnf"
-  pkg1="dnf langpacks-en"
+function configure() {
+  conf=bootstrap-conf
+  source $conf/common.conf
+  $sudo -v
 }
 
+function bootstrap_main () {
+  $sudo rpmdb --root $root --initdb
+  $sudo rpm --root $root -ivh $rpms
+  $sudo systemd-machine-id-setup --root=$root
+
+  [ -f "$rpm_gpg_key" ] || $sudo cp -iv $root/$rpm_gpg_key $rpm_gpg_key
+
+  use_parent_resolv_conf
+
+  $bash "printf 'LANG=en_US.UTF-8\nLC_MESSAGES=C\n' > /etc/locale.conf"
+
+  $dnf0 install $pkg0
+  to_dnf_conf 'install_weak_deps=False'
+  to_dnf_conf 'exclude=java-* *-java* *jdk* javapackages-* yum'
+
+  $bash 'rpmdb --rebuilddb'
+
+  $dnf1 install $pkg1
+  $dnf2 remove $pkg0
+
+  $chroot cat /etc/os-release
+  $chroot cat /etc/dnf/dnf.conf
+}
+
+function root() {
+  local root_src=/mnt/bootstrap-$distro-$release-$arch
+
+  if [ "$1" == "done" ]; then
+    mount | grep -F $root_src
+    return
+  fi
+
+  local root=$root_src.mnt
+
+  function prep_root () {
+    if [ -d "$root" ]; then
+      $sudo rm -rf $root/*
+      $sudo umount $root -v || true
+      $sudo rm -rf $root
+    fi
+
+    $sudo mkdir -pv $root_src $root
+    $sudo mount -v -o bind $root_src $root
+  }
+
+  prep_root 1>&2
+
+  chroot="$sudo chroot "$root
+  achroot="$sudo arch-chroot "$root
+
+  echo $1 chroot="'$chroot';"
+  echo $1 dnf0="'$sudo dnf -y --setopt=install_weak_deps=False --installroot=$root';"
+  echo $1 dnf1="'$achroot microdnf -y';"
+  echo $1 dnf2="'$achroot dnf -y';"
+
+  echo $1 bash="'$chroot bash -c';"
+  echo $1 root="$root;"
+}
+
+function get_rpms() {
+
+  local rpms=""
+  function download_rpms () {
+    function download_rpm () {
+      local pr1=$1
+      local pr2=$2
+      rm -vf $pr2
+      if ! wget $base_packages/$pr1 -O$pr2; then
+        rm -vf $pr2
+        exit 1
+      fi
+    }
+
+    local _rpms=$1
+    [ "$_rpms" == "" ] && return
+    local suffix=$2
+    for _rpm0 in $_rpms; do
+      local _rpm=$_rpm0.$suffix
+      local rpm=$rpms_dest/$_rpm
+      [ -s $rpm ] || download_rpm $_rpm $rpm
+      rpms+=" $rpm"
+    done
+  }
+
+  1>&2 mkdir -pv $rpms_dest
+  1>&2 download_rpms "$1" $arch.rpm
+  1>&2 download_rpms "$2" $tag.noarch.rpm
+  1>&2 download_rpms "$3" $dist.noarch.rpm
+
+  echo $4 rpms="'$rpms';"
+}
+
+function use_parent_resolv_conf() {
+  $sudo rm -vf $root/etc/resolv.conf
+  cat /etc/resolv.conf | $sudo dd of=$root/etc/resolv.conf
+}
+
+
 function bootstrap() {
+
+  function to_dnf_conf() {
+    $bash "printf '$1\n' >> /etc/dnf/dnf.conf"
+  }
+
   local release=$1
-  source bootstrap-almalinux-main.sh
+  base_packages=$package_mirror/$distro/$release/$baseroot/$arch/$os_packages
+
+  source $conf/$distro-$release.conf
+
+  eval $(
+    local prefix=':::'
+    local match="^$prefix..*=..*;"
+    local vars0=$(get_rpms "$_r0" "$_r1" "$_r2" $prefix)
+    local vars1=$(root $prefix)
+    printf '%s' "$vars0" "$vars1" | grep "$match" | sed "s/$prefix//g" | tee /dev/stderr
+  )
+
+  set -x
+  bootstrap_main
+  set +x
+  root 'done'
 }
 
 function main() {
-  common_config
+  configure
 
   local d8=8.8
   local d9=9.2
