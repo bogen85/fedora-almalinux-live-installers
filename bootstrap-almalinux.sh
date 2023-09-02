@@ -65,7 +65,13 @@ function use_parent_resolv_conf() {
   cat /etc/resolv.conf | $sudo dd of=$root/etc/resolv.conf
 }
 
-dnf="dnf -y"
+dnf0="$sudo dnf -y --setopt=install_weak_deps=False --installroot=$root"
+dnf1="$achroot dnf -y"
+bash="$chroot bash -c"
+
+function to_dnf_conf() {
+  $bash "printf '$1\n' >> /etc/dnf/dnf.conf"
+}
 
 set -x
 $sudo -v
@@ -80,13 +86,15 @@ $sudo systemd-machine-id-setup --root=$root
 
 use_parent_resolv_conf
 
-# $sudo $dnf --installroot=$root --refresh upgrade
-$sudo $dnf --installroot=$root install $pkg0
+$bash "printf 'LANG=en_US.UTF-8\nLC_MESSAGES=C\n' > /etc/locale.conf"
+
+$dnf0 install $pkg0
+to_dnf_conf 'install_weak_deps=False'
+to_dnf_conf 'exclude=java-* *-java* *jdk* javapackages-* yum'
+
+$bash 'rpmdb --rebuilddb'
+
+$dnf1 install $pkg1
 
 $chroot cat /etc/os-release
-$chroot bash -c "printf 'LANG=en_US.UTF-8\nLC_MESSAGES=C\n' > /etc/locale.conf"
-$chroot rpmdb --rebuilddb
-
-$achroot $dnf install $pkg1
-
-$achroot $dnf --refresh upgrade
+$chroot cat /etc/dnf/dnf.conf
