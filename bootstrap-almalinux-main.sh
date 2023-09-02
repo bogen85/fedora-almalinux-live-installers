@@ -26,24 +26,22 @@ chroot="$sudo chroot "$root
 achroot="$sudo arch-chroot "$root
 
 function download_rpm () {
-  fail=false
-  pr1=$1
-  pr2=$2
+  local pr1=$1
+  local pr2=$2
   rm -vf $pr2
-  wget $base_packages/$pr1 -O$pr2 || fail=true
-  if [ "$fail" == "true" ]; then
-    rm -rf $pr2
+  if ! wget $base_packages/$pr1 -O$pr2; then
+    rm -vf $pr2
     exit 1
   fi
 }
 
 function download_rpms () {
-  _rpms=$1
+  local _rpms=$1
   [ "$_rpms" == "" ] && return
-  suffix=$2
+  local suffix=$2
   for _rpm0 in $_rpms; do
-    _rpm=$_rpm0.$suffix
-    rpm=$rpms_dest/$_rpm
+    local _rpm=$_rpm0.$suffix
+    local rpm=$rpms_dest/$_rpm
     [ -s $rpm ] || download_rpm $_rpm $rpm
     rpms+=" $rpm"
   done

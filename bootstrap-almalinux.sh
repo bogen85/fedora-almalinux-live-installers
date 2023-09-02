@@ -24,10 +24,14 @@ function common_config() {
 
 function main() {
   common_config
+
+  local d8=8.8
+  local d9=9.2
+
   release=$(case "$1" in
-    8) echo 8.8 ;;
-    9) echo 9.2 ;;
-    :) echo 9.2 ;;
+    8) echo $d8 ;;
+    9) echo $d9 ;;
+    :) echo $d9 ;;
     *) echo $1 ;;
   esac)
 
