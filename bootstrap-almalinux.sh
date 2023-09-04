@@ -15,7 +15,11 @@ function bootstrap_main () {
   $sudo rpm --root $root -ivh $rpms
   $sudo systemd-machine-id-setup --root=$root
 
-  [ -f "$rpm_gpg_key" ] || $sudo cp -iv $root/$rpm_gpg_key $rpm_gpg_key
+  if ! [ -f "$rpm_gpg_key" ]; then
+    $sudo rm -vf $rpm_gpg_key
+    $sudo mkdir -pv $(dirname $rpm_gpg_key)
+    $sudo cp -iv $root/$rpm_gpg_key $rpm_gpg_key
+  fi
 
   use_parent_resolv_conf
 
@@ -53,7 +57,7 @@ function root() {
     if [ -d "$root" ]; then
       $sudo rm -rf $root/*
       $sudo umount $root -v || true
-      $sudo rm -rf $root
+      $sudo rm -rf $root $root_src
     fi
 
     $sudo mkdir -pv $root_src $root
