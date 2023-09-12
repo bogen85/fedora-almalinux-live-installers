@@ -4,9 +4,45 @@
 set -euo pipefail
 export BASHOPTS SHELLOPTS
 sudo=sudo
+bootstraps=/mnt/bootstraps
+
 export rootfs_tarballs=/run/host/home/alpine-qemu-rootfs-tarballs
+rootname_prefix="alpine-"
+rootname_suffix="-test"
 
 valid_cmds="chroot tar tar-built tar-all init redo-init init-all init-missing ls rm rm-all arch help -h --help"
+arches="aarch64 armhf armv7 ppc64le riscv64 x32 x64"
+
+repo_root_url=https://dl-cdn.alpinelinux.org/alpine
+
+packages1=$(echo $(cat <<__END__
+  setarch bash alpine-base
+  bash-completion
+  clang
+  czmq-dev
+  fakeroot
+  g++
+  gcc
+  git
+  htop
+  joe
+  make
+  mosquitto-dev
+  openssh-client-default
+  pkgconf
+  python3-dev
+  micro
+  mlocate
+  qt6-qtbase-dev
+__END__
+))" "
+
+__packages2__=$(echo $(cat <<__END__
+__END__
+))" "
+
+export packages2=""
+
 
 function usage () {
   echo "usage: $script $@"
@@ -94,10 +130,16 @@ function show_help () {
   show_item_help $item
 }
 
+function mkrootname () {
+  local _arch=$@
+  [ "$_arch" == "" ] && _arch='*'
+  printf ${rootname_prefix}'%s'${rootname_suffix} "$_arch"
+}
 
 function _ls_roots () {
-  for r in /mnt/bootstraps/alpine-*-test.mnt; do
-    echo $(basename $r) | sed -e 's/^alpine-//' -e 's/-test.mnt$//'
+  for r in $(eval "echo -n $bootstraps/$(mkrootname).mnt"); do
+    basename $r \
+      | sed -e 's/^'${rootname_prefix}'//' -e 's/'${rootname_suffix}'.mnt$//'
   done
 }
 
@@ -176,47 +218,19 @@ function bootstrap () {
 
 function check_target_root () {
   get_arch $arch
-  if [ -f $root/etc/hostname ]; then
-    :
+  local _hostname=$root_src/etc/hostname
+  if [ -f $_hostname ]; then
+    cat $_hostname
   else
     bootstrap "$packages1" "$packages2"
   fi
 }
 
-packages1=$(echo $(cat <<__END__
-  setarch bash alpine-base
-  bash-completion
-  clang
-  czmq-dev
-  fakeroot
-  g++
-  gcc
-  git
-  htop
-  joe
-  make
-  mosquitto-dev
-  openssh-client-default
-  pkgconf
-  python3-dev
-  micro
-  mlocate
-  qt6-qtbase-dev
-__END__
-))" "
-
-__packages2__=$(echo $(cat <<__END__
-__END__
-))" "
-export packages2=""
-
-arches="aarch64 armhf armv7 ppc64le riscv64 x32 x64"
-
 function setup_arch () {
   local _invalid_ok=$@
   [ "$_invalid_ok" == "" ] && _invalid_ok=no
 
-  export root_src=/mnt/bootstraps/alpine-$arch-test
+  export root_src=$bootstraps/$(mkrootname $arch)
   export root=$root_src.mnt
 
   export alpine_arch=$arch
@@ -249,11 +263,11 @@ function setup_arch () {
   esac
 
   export packages1 packages2
-  export hostname=alpine-$arch-test10
+  export hostname=$(mkrootname $arch)10
   export repos=$(sed -e 's/ //g' << __END__
-    https://dl-cdn.alpinelinux.org/alpine/$flavor/main
-    https://dl-cdn.alpinelinux.org/alpine/$flavor/community
-    https://dl-cdn.alpinelinux.org/alpine/edge/testing
+    $repo_root_url/$flavor/main
+    $repo_root_url/$flavor/community
+    $repo_root_url/edge/testing
 __END__
 );}
 
