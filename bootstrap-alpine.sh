@@ -224,7 +224,7 @@ function bootstrap () {
 }
 
 function check_target_root () {
-  get_arch $arch
+  get_arch $@
   local _hostname=$root_src/etc/hostname
   if [ -f $_hostname ]; then
     cat $_hostname
@@ -285,7 +285,7 @@ function get_arch () {
     show_item_help $cmd
     exit 1
   else
-    arch=$_args
+    export arch=$_args
     setup_arch $invalid_ok
   fi
 }
@@ -297,8 +297,9 @@ function rm_one () {
 }
 
 function tar_one () {
-  get_arch $@
-  check_target_root
+  local _arch=$@
+  get_arch $_arch
+  check_target_root $_arch
   sudo bash -c '
     set -euo pipefail;
     mkdir -pv '${rootfs_tarballs}'
@@ -311,15 +312,14 @@ function tar_one () {
 }
 
 function init_one () {
-  export arch=$@
-  get_arch $arch
+  get_arch $@
   bootstrap "$packages1" "$packages2"
 }
 
 function check_one () {
-  export arch=$@
-  get_arch $arch
-  check_target_root
+  local _arch=$@
+  get_arch $_arch
+  check_target_root $_arch
 }
 
 function _ls () {
@@ -327,63 +327,61 @@ function _ls () {
 }
 
 function for_existing_arch () {
-  fun=$@
+  local fun=$@
   for _arch in $(ls_roots); do $fun $_arch; done
 }
 
 function for_all_arch () {
-  fun=$@
+  local fun=$@
   for _arch in $arches; do $fun $_arch; done
 }
 
 function chroot_one () {
+  local _arch=$1; shift
   local _args=$@
-  check_target_root
+  check_target_root $_arch
   [ "$_args" == "" ] && local _args="bash"
   arch_chroot $root $_args
 }
 
-args=$@
-script=$0
-arch="unknown"
+function main() {
+  local args=$@
+  export script=$0
+  export arch="unknown"
 
-cmd="none"
+  if [ "$args" == "" ]; then
+    local cmd="none"
+  else
+    local cmd=$1; shift; args=$@
+  fi
 
-if [ "$args" != "" ]; then
-  cmd=$1; shift; args=$@
-fi
+  export invalid_ok="no"
 
-invalid_ok="no"
+  case "$cmd" in
+    -h | help | --help) local cmd=$@; show_help "$cmd";;
 
-case "$cmd" in
-  tar) tar_one $@;;
-  init) init_one $@;;
-  ls) _ls;;
-  rm) rm_one $@;;
+    tar) tar_one $@;;
+    init) init_one $@;;
+    ls) _ls;;
+    rm) rm_one $@;;
 
-  arch) echo arches: $arches;;
+    arch) echo arches: $arches;;
 
-  init-all)     for_all_arch      "init_one"  ;;
-  tar-all)      for_all_arch      "tar_one"   ;;
-  init-missing) for_all_arch      "check_one" ;;
-  rm-all)       for_existing_arch "rm_one"    ;;
-  redo-init)    for_existing_arch "init_one"  ;;
-  tar-built)    for_existing_arch "tar_one"   ;;
+    init-all)     for_all_arch      "init_one"  ;;
+    tar-all)      for_all_arch      "tar_one"   ;;
+    init-missing) for_all_arch      "check_one" ;;
+    rm-all)       for_existing_arch "rm_one"    ;;
+    redo-init)    for_existing_arch "init_one"  ;;
+    tar-built)    for_existing_arch "tar_one"   ;;
 
-  chroot)
-    [ "$args" == "" ] && get_arch ""
-    arch=$1; shift
-    chroot_one $@
-    ;;
+    chroot)
+      [ "$args" == "" ] && get_arch ""
+      local _arch=$1; shift
+      chroot_one $_arch $@
+      ;;
 
-  -h | help | --help)
-    _cmd=$@
-    show_help "$_cmd"
-    ;;
+    *) echo cmd provided: $cmd; show_help; exit 1;;
+  esac
+}
 
-  *)
-    echo cmd provided: $cmd
-    show_help
-    exit 1
-    ;;
-esac
+main $@
