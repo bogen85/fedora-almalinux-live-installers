@@ -6,7 +6,7 @@ export BASHOPTS SHELLOPTS
 sudo=sudo
 export rootfs_tarballs=/run/host/home/alpine-qemu-rootfs-tarballs
 
-valid_cmds="chroot tar tar-built tar-all init init-all ls rm rm-all arch help -h --help"
+valid_cmds="chroot tar tar-built tar-all init init-all init-missing ls rm rm-all arch help -h --help"
 
 function usage () {
   echo "usage: $script $@"
@@ -31,8 +31,9 @@ function show_item_help () {
         show avaliable architectures"
       ;;
     chroot)
-      usage "$item <arch>
-        enter chroot for <arch>, initialize if no root for <arch> exists"
+      usage "$item <arch> [command string]
+        enter chroot for <arch>, initialize if no root for <arch> exists
+        if command string it given it is executed in the chroot instead of a shell"
       ;;
     tar)
       usage "$item <arch>
@@ -53,6 +54,10 @@ function show_item_help () {
     init-all)
       usage "$item
         create roots for all available architectures"
+      ;;
+    init-missing)
+      usage "$item
+        create roots for all available architectures with missing roots"
       ;;
     ls)
       usage "$item
@@ -166,6 +171,7 @@ function bootstrap () {
 }
 
 function check_target_root () {
+  get_arch $arch
   if [ -f $root/etc/hostname ]; then
     :
   else
@@ -279,6 +285,20 @@ function tar_one () {
   '
 }
 
+function init_one () {
+  get_arch $@
+  bootstrap "$packages1" "$packages2"
+}
+
+function check_one () {
+  get_arch $@
+  check_target_root
+}
+
+function _ls () {
+  printf 'built : %s\n' "$(ls_roots)"
+}
+
 args=$@
 script=$0
 arch="unknown"
@@ -288,6 +308,7 @@ if [ "$args" == "" ]; then
 else
   cmd=$1
   shift
+  args=$@
 fi
 
 invalid_ok="no"
@@ -301,7 +322,8 @@ case "$cmd" in
     echo arches: $arches
     ;;
   chroot)
-    get_arch $@; shift; args=$@
+    [ "$args" == "" ] && get_arch ""
+    arch=$1; shift; args=$@
     check_target_root
     [ "$args" == "" ] && args="bash"
     arch_chroot $root $args
@@ -316,8 +338,14 @@ case "$cmd" in
     for _arch in $arches; do tar_one $_arch; done
     ;;
   init)
-    get_arch $@; shift; args=$@
-    bootstrap "$packages1" "$packages2"
+    init_one $@
+    ;;
+  init-missing)
+    for _arch in $arches; do
+      export arch=$_arch
+      check_target_root
+    done
+    _ls
     ;;
   init-all)
     for _arch in $arches; do
@@ -326,7 +354,7 @@ case "$cmd" in
     done
     ;;
   ls)
-    printf 'built : %s\n' "$(ls_roots)"
+    _ls
     ;;
   rm)
     rm_one $@
