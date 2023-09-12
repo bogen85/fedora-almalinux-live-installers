@@ -206,9 +206,8 @@ function arch_chroot () { _arch_chroot $@; }
 function bootstrap () {
   prep_root $root_src $root
 
-  local pkg1=$1
-  local pkg2=$(echo -n $2)
-  packages=$@
+  local pkg1=$packages1
+  local pkg2=$packages2
 
   $sudo apk --arch $alpine_arch \
     -X $repo_root_url/$flavor/main/ \
@@ -229,7 +228,7 @@ function check_target_root () {
   if [ -f $_hostname ]; then
     cat $_hostname
   else
-    bootstrap "$packages1" "$packages2"
+    bootstrap
   fi
 }
 
@@ -242,7 +241,7 @@ function setup_arch () {
 
   export alpine_arch=$arch
   export flavor=latest-stable
-  export packages2=$__packages2__
+  packages2=$__packages2__
   case $arch in
     armhf | armv7 | aarch64)
       packages2+="fpc"
@@ -269,6 +268,7 @@ function setup_arch () {
       ;;
   esac
 
+  packages2=$(echo -n $packages2)
   export packages1 packages2
   export hostname=$(mkrootname $arch)10
   export repos=$(sed -e 's/ //g' << __END__
@@ -313,7 +313,7 @@ function tar_one () {
 
 function init_one () {
   get_arch $@
-  bootstrap "$packages1" "$packages2"
+  bootstrap
 }
 
 function check_one () {
