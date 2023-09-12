@@ -67,6 +67,14 @@ function bootstrap () {
   [ "" == "$pkg2" ] || arch_chroot $root apk add $pkg2
 }
 
+function check_target_root () {
+  if [ -f $root/etc/hostname ]; then
+    :
+  else
+    bootstrap "$packages1" "$packages2"
+  fi
+}
+
 packages1=$(echo $(cat <<__END__
   setarch bash alpine-base
   bash-completion
@@ -95,18 +103,22 @@ __END__
 
 export arch=$1
 
-arches="x86_64 i386 armhf ppc64le armv7 aarch64 riscv64"
-root_src=/mnt/bootstraps/alpine-$arch-test
-root=$root_src.mnt
+arches="x64 x32 armhf ppc64le armv7 aarch64 riscv64"
+export root_src=/mnt/bootstraps/alpine-$arch-test
+export root=$root_src.mnt
 
 export alpine_arch=$arch
 export flavor=latest-stable
 
 case $arch in
-  armhf | armv7 | aarch64 | x86_64)
+  armhf | armv7 | aarch64)
     packages2+="fpc"
     ;;
-  i386)
+  x64)
+    export alpine_arch=x86_64
+    packages2+="fpc"
+    ;;
+  x32)
     export alpine_arch=x86
     packages2+="fpc"
     ;;
@@ -126,6 +138,7 @@ esac
 
 shift
 
+export packages1 packages2
 export hostname=alpine-$arch-test10
 export repos=$(cat << __END__
 https://dl-cdn.alpinelinux.org/alpine/$flavor/main
@@ -144,8 +157,11 @@ else
   _args=$@
 fi
 
+valid_cmds="chroot init"
+
 case "$cmd" in
   chroot)
+    check_target_root
     [ "$_args" == "" ] && _args="bash"
     arch_chroot $root $_args
     ;;
@@ -154,7 +170,7 @@ case "$cmd" in
     ;;
   *)
     echo provided: $cmd
-    echo must provide a valid command
+    echo must provide a valid command: $valid_cmds
     exit 1
     ;;
 esac
