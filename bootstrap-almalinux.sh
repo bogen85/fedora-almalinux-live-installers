@@ -23,19 +23,21 @@ function bootstrap_main () {
 
   use_parent_resolv_conf
 
-  $bash "printf 'LANG=en_US.UTF-8\nLC_MESSAGES=C\n' > /etc/locale.conf"
+  $bash $(cat << "  EOT"
+    printf 'LANG=en_US.UTF-8\nLC_MESSAGES=C\n' > /etc/locale.conf
+  EOT
+  )
 
   $dnf0 install $pkg0
   to_dnf_conf 'install_weak_deps=False'
   to_dnf_conf 'exclude=java-* *-java* *jdk* javapackages-* yum'
 
-  $bash 'rpmdb --rebuilddb'
+  $bash rpmdb --rebuilddb
 
   $dnf1 install $pkg1
   $dnf2 remove $pkg0
 
-  $chroot cat /etc/os-release
-  $chroot cat /etc/dnf/dnf.conf
+  for f in os-release locale.conf dnf/dnf.conf; do $bash cat /etc/$f; done
 }
 
 function format_vars() {
@@ -44,13 +46,38 @@ function format_vars() {
   printf "$prefix"' %s=%s;\n' "$@"
 }
 
+function _in_chroot () {
+  local _root=$1; shift
+  local _shell=$1; shift
+  local cmd=$@
+  $sudo chroot $_root $_shell << __END__
+    set -euo pipefail;
+    $cmd
+__END__
+}
+
+function _arch_chroot () {
+  local _root=${1}; shift
+  echo FOO
+  if [ -e "$root/etc/resolv.conf" ]; then
+    sudo mv -v $root/etc/resolv.conf $root/etc/resolv.conf.00
+  fi
+  local cmd=$@
+  sudo arch-chroot $root bash << __END__
+    set -euo pipefail;
+    cp -v /etc/resolv.conf.00 /etc/resolv.conf
+    $cmd
+__END__
+}
+
+function in_chroot() { set +x; _in_chroot $@; set -x; }
+
+function arch_chroot () { set +x; _arch_chroot $@; set -x; }
+
 function root() {
   local root_src=$root_prefix/$distro-$release-$arch
 
-  if [ "$1" == "done" ]; then
-    mount | grep -F $root_src
-    return
-  fi
+  if [ "$1" == "done" ]; then mount | grep -F $root_src; return; fi
 
   function prep_root () {
     local root=$1
@@ -70,7 +97,7 @@ function root() {
     1>&2 prep_root $root
 
     local chroot="$sudo chroot "$root
-    local achroot="$sudo arch-chroot "$root
+    local achroot="arch_chroot "$root
     local _dnf="dnf -y --setopt=install_weak_deps="
     local dnf0="${_dnf}False"
     local dnf1="${_dnf}0"
@@ -80,8 +107,7 @@ function root() {
       dnf0 "'$sudo $dnf0 --installroot=$root'"  \
       dnf1 "'$achroot micro$dnf1'" \
       dnf2 "'$achroot $dnf0'" \
-      bash "'$chroot bash -c'" \
-      chroot "'$chroot'"
+      bash "'in_chroot $root bash'"
   }
   prep_root_vars $1 $root_src
 }
@@ -127,9 +153,7 @@ function use_parent_resolv_conf() {
 
 function bootstrap() {
 
-  function to_dnf_conf() {
-    $bash "printf '$1\n' >> /etc/dnf/dnf.conf"
-  }
+  function to_dnf_conf() { $bash "printf '$1\n' >> /etc/dnf/dnf.conf"; }
 
   local release=$1
   base_packages=$package_mirror/$distro/$release/$baseroot/$arch/$os_packages
