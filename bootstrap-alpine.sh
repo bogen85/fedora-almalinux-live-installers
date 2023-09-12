@@ -6,7 +6,7 @@ export BASHOPTS SHELLOPTS
 sudo=sudo
 export rootfs_tarballs=/run/host/home/alpine-qemu-rootfs-tarballs
 
-valid_cmds="chroot tar tar-built tar-all init init-all init-missing ls rm rm-all arch help -h --help"
+valid_cmds="chroot tar tar-built tar-all init redo-init init-all init-missing ls rm rm-all arch help -h --help"
 
 function usage () {
   echo "usage: $script $@"
@@ -50,6 +50,10 @@ function show_item_help () {
     init)
       usage "$item <arch>
         create root for given architecture"
+      ;;
+    redo-init)
+      usage "$item
+        recreate roots for architectures with existing roots"
       ;;
     init-all)
       usage "$item
@@ -286,12 +290,14 @@ function tar_one () {
 }
 
 function init_one () {
-  get_arch $@
+  export arch=$@
+  get_arch $arch
   bootstrap "$packages1" "$packages2"
 }
 
 function check_one () {
-  get_arch $@
+  export arch=$@
+  get_arch $arch
   check_target_root
 }
 
@@ -340,18 +346,15 @@ case "$cmd" in
   init)
     init_one $@
     ;;
+  redo-init)
+    for _arch in $(ls_roots); do init_one $_arch; done
+    ;;
   init-missing)
-    for _arch in $arches; do
-      export arch=$_arch
-      check_target_root
-    done
+    for _arch in $arches; do check_one $_arch; done
     _ls
     ;;
   init-all)
-    for _arch in $arches; do
-      get_arch $_arch
-      bootstrap "$packages1" "$packages2"
-    done
+    for _arch in $arches; do init_one $_arch; done
     ;;
   ls)
     _ls
