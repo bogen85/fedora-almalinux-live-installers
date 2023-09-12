@@ -15,7 +15,7 @@ arches="aarch64 armhf armv7 ppc64le riscv64 x32 x64"
 
 repo_root_url=https://dl-cdn.alpinelinux.org/alpine
 
-packages1=$(echo $(cat <<__END__
+packages1=$(echo -n $(echo -n "
   setarch bash alpine-base
   bash-completion
   clang
@@ -33,13 +33,10 @@ packages1=$(echo $(cat <<__END__
   python3-dev
   micro
   mlocate
-  qt6-qtbase-dev
-__END__
-))" "
+  qt6-qtbase-dev"))
 
-__packages2__=$(echo $(cat <<__END__
-__END__
-))" "
+__packages2__=$(echo -n $(echo -n "
+  "))
 
 export packages2=""
 
@@ -183,11 +180,11 @@ function _arch_chroot () {
     local pre=""
   fi
 
-  $sudo tee $root/root/script << __END__
-    set -euo pipefail; hostname $hostname;
-    cp -v /etc/resolv.conf.00 /etc/resolv.conf;
-    $pre $cmd
-__END__
+  local _script="
+      set -euo pipefail; hostname $hostname;
+      cp -v /etc/resolv.conf.00 /etc/resolv.conf;
+      $pre $cmd "
+  echo $_script | $sudo tee $root/root/script
 
   function cleanup () {
     $sudo rm -vf $root/etc/resolv.conf $root/root/script
@@ -214,12 +211,53 @@ function bootstrap () {
     -X $repo_root_url/$flavor/community/ \
     -U --allow-untrusted --root $root --initdb add $pkg1
 
-  echo "$repos" | $sudo tee $root/etc/apk/repositories
+  printf '%s\n' $repos | $sudo tee $root/etc/apk/repositories
 
   arch_chroot $root setup-hostname "$hostname"
   arch_chroot $root apk update
   arch_chroot $root apk upgrade
   [ "" == "$pkg2" ] || arch_chroot $root apk add $pkg2
+}
+
+function setup_arch () {
+  export arch=$@
+
+  export root_src=$bootstraps/$(mkrootname $arch)
+  export root=$root_src.mnt
+
+  export alpine_arch=$arch
+  export flavor=latest-stable
+  packages2=$__packages2__
+  case $arch in
+    armhf | armv7 | aarch64)  packages2+="fpc";;
+
+    x64)  packages2+="fpc"; export alpine_arch=x86_64;;
+    x32)  packages2+="fpc"; export alpine_arch=x86;;
+
+    ppc64le)  packages2+="fpc-stage0" ;;
+    riscv64)  echo WIP: $arch;  export flavor=edge;;
+
+    *) printf 'Invalid arch: %s\nValid: %s\n' "$arch" "$arches"; exit 1;;
+  esac
+
+  packages2=$(echo -n $packages2)
+  export packages1 packages2
+  export hostname=$(mkrootname $arch)10
+
+  export repos="
+    $repo_root_url/$flavor/main
+    $repo_root_url/$flavor/community
+    $repo_root_url/edge/testing"
+}
+
+function get_arch () {
+  local _args=$@
+  if [ "$_args" == "" ]; then
+    echo Missing "<ARCH>" for $cmd
+    show_item_help $cmd
+    exit 1
+  fi
+  setup_arch $_args
 }
 
 function check_target_root () {
@@ -232,66 +270,7 @@ function check_target_root () {
   fi
 }
 
-function setup_arch () {
-  local _invalid_ok=$@
-  [ "$_invalid_ok" == "" ] && _invalid_ok=no
-
-  export root_src=$bootstraps/$(mkrootname $arch)
-  export root=$root_src.mnt
-
-  export alpine_arch=$arch
-  export flavor=latest-stable
-  packages2=$__packages2__
-  case $arch in
-    armhf | armv7 | aarch64)
-      packages2+="fpc"
-      ;;
-    x64)
-      export alpine_arch=x86_64
-      packages2+="fpc"
-      ;;
-    x32)
-      export alpine_arch=x86
-      packages2+="fpc"
-      ;;
-    ppc64le)
-      packages2+="fpc-stage0"
-      ;;
-    riscv64)
-      echo WIP: $arch
-      export flavor=edge
-      ;;
-    *)
-      echo Invalid arch: $arch
-      echo Valid arches: $arches
-      [ "$_invalid_ok" == "no" ] && exit 1 || true
-      ;;
-  esac
-
-  packages2=$(echo -n $packages2)
-  export packages1 packages2
-  export hostname=$(mkrootname $arch)10
-  export repos=$(sed -e 's/ //g' << __END__
-    $repo_root_url/$flavor/main
-    $repo_root_url/$flavor/community
-    $repo_root_url/edge/testing
-__END__
-);}
-
-function get_arch () {
-  local _args=$@
-  if [ "$_args" == "" ]; then
-    echo Missing "<ARCH>" for $cmd
-    show_item_help $cmd
-    exit 1
-  else
-    export arch=$_args
-    setup_arch $invalid_ok
-  fi
-}
-
 function rm_one () {
-  invalid_ok=yes
   get_arch $@
   rm_root $root_src $root
 }
@@ -354,8 +333,6 @@ function main() {
   else
     local cmd=$1; shift; args=$@
   fi
-
-  export invalid_ok="no"
 
   case "$cmd" in
     -h | help | --help) local cmd=$@; show_help "$cmd";;
