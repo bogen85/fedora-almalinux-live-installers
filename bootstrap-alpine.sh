@@ -180,11 +180,10 @@ function _arch_chroot () {
     local pre=""
   fi
 
-  local _script="
-      set -euo pipefail; hostname $hostname;
-      cp -v /etc/resolv.conf.00 /etc/resolv.conf;
-      $pre $cmd "
-  echo $_script | $sudo tee $root/root/script
+  echo "set -euo pipefail
+    hostname $hostname
+    cp -v /etc/resolv.conf.00 /etc/resolv.conf
+    $pre $cmd" | sed 's/^ */  /' | $sudo tee $root/root/script
 
   function cleanup () {
     $sudo rm -vf $root/etc/resolv.conf $root/root/script
@@ -213,7 +212,7 @@ function bootstrap () {
 
   printf '%s\n' $repos | $sudo tee $root/etc/apk/repositories
 
-  arch_chroot $root setup-hostname "$hostname"
+  arch_chroot $root setup-hostname $hostname
   arch_chroot $root apk update
   arch_chroot $root apk upgrade
   [ "" == "$pkg2" ] || arch_chroot $root apk add $pkg2
