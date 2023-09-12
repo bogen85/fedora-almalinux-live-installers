@@ -4,6 +4,7 @@
 set -euo pipefail
 export BASHOPTS SHELLOPTS
 sudo=sudo
+export tarball_dir=/run/host/home/alpine-qemu-rootfs
 
 function _ls_roots () {
   for r in /mnt/bootstraps/alpine-*-test.mnt; do
@@ -119,7 +120,7 @@ __END__
 ))" "
 export packages2=""
 
-arches="x64 x32 armhf ppc64le armv7 aarch64 riscv64"
+arches="aarch64 armhf armv7 ppc64le riscv64 x32 x64"
 
 function setup_arch () {
   local _invalid_ok=$@
@@ -189,7 +190,28 @@ function get_arch () {
   fi
 }
 
-valid_cmds="chroot init init-all ls rm rm-all arch"
+function rm_one () {
+  invalid_ok=yes
+  get_arch $1
+  rm_root $root_src $root
+}
+
+function tar_one () {
+  get_arch $1
+  check_target_root
+  sudo bash -c '
+    set -euo pipefail;
+    mkdir -pv '${tarball_dir}'
+    tar='${tarball_dir}'/$(basename '${root_src}'.tar);
+    rm -f $tar; set -x;
+    cd '${root_src}';
+    tar cf $tar .;
+    du -h $tar;
+  '
+}
+
+valid_cmds="chroot tar tar-built tar-all init init-all ls rm rm-all arch"
+
 
 case "$cmd" in
   arch)
@@ -200,6 +222,15 @@ case "$cmd" in
     check_target_root
     [ "$args" == "" ] && args="bash"
     arch_chroot $root $args
+    ;;
+  tar)
+    tar_one $@
+    ;;
+  tar-built)
+    for _arch in $(ls_roots); do tar_one $_arch; done
+    ;;
+  tar-all)
+    for _arch in $arches; do tar_one $_arch; done
     ;;
   init)
     get_arch $@; shift; args=$@
@@ -212,20 +243,15 @@ case "$cmd" in
     done
     ;;
   ls)
+    echo -n "built : "
     ls_roots
     ;;
   rm)
-    invalid_ok=yes
-    get_arch $@; shift; args=$@
-    rm_root $root_src $root
+    rm_one $@
     ;;
   rm-all)
     arches=$(ls_roots)
-    invalid_ok=yes
-    for _arch in $arches; do
-      get_arch $_arch
-      rm_root $root_src $root
-    done
+    for _arch in $arches; do rm_one $_arch; done
     ;;
   *)
     echo provided: $cmd
