@@ -183,13 +183,13 @@ function _arch_chroot () {
   echo "set -euo pipefail
     hostname $hostname
     cp -v /etc/resolv.conf.00 /etc/resolv.conf
-    $pre $cmd" | sed 's/^ */  /' | $sudo tee $root/root/script
+    exec $pre $cmd" | sed 's/^ */  /' | $sudo tee $root/root/script
 
   function cleanup () {
     $sudo rm -vf $root/etc/resolv.conf $root/root/script
   }
 
-  if $sudo arch-chroot $root sh /root/script; then
+  if $sudo arch-chroot $root bash /root/script; then
     cleanup
   else
     cleanup
