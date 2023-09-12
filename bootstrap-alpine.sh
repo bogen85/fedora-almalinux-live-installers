@@ -184,14 +184,21 @@ function _arch_chroot () {
   fi
 
   $sudo tee $root/root/script << __END__
-    set -euo pipefail;
-    hostname $hostname;
+    set -euo pipefail; hostname $hostname;
     cp -v /etc/resolv.conf.00 /etc/resolv.conf;
     $pre $cmd
 __END__
 
-  $sudo arch-chroot $root sh /root/script
-  $sudo rm -vf $root/etc/resolv.conf
+  function cleanup () {
+    $sudo rm -vf $root/etc/resolv.conf $root/root/script
+  }
+
+  if $sudo arch-chroot $root sh /root/script; then
+    cleanup
+  else
+    cleanup
+    exit 1
+  fi
 }
 
 function arch_chroot () { _arch_chroot $@; }
@@ -204,8 +211,8 @@ function bootstrap () {
   packages=$@
 
   $sudo apk --arch $alpine_arch \
-    -X http://dl-cdn.alpinelinux.org/alpine/$flavor/main/ \
-    -X http://dl-cdn.alpinelinux.org/alpine/$flavor/community/ \
+    -X $repo_root_url/$flavor/main/ \
+    -X $repo_root_url/$flavor/community/ \
     -U --allow-untrusted --root $root --initdb add $pkg1
 
   echo "$repos" | $sudo tee $root/etc/apk/repositories
@@ -298,7 +305,7 @@ function tar_one () {
     tar='${rootfs_tarballs}'/$(basename '${root_src}'.tar);
     rm -f $tar; set -x;
     cd '${root_src}';
-    tar cf $tar .;
+    tar cpf $tar .;
     du -h $tar;
   '
 }
@@ -319,66 +326,61 @@ function _ls () {
   printf 'built : %s\n' "$(ls_roots)"
 }
 
+function for_existing_arch () {
+  fun=$@
+  for _arch in $(ls_roots); do $fun $_arch; done
+}
+
+function for_all_arch () {
+  fun=$@
+  for _arch in $arches; do $fun $_arch; done
+}
+
+function chroot_one () {
+  local _args=$@
+  check_target_root
+  [ "$_args" == "" ] && local _args="bash"
+  arch_chroot $root $_args
+}
+
 args=$@
 script=$0
 arch="unknown"
 
-if [ "$args" == "" ]; then
-  cmd="none"
-else
-  cmd=$1
-  shift
-  args=$@
+cmd="none"
+
+if [ "$args" != "" ]; then
+  cmd=$1; shift; args=$@
 fi
 
 invalid_ok="no"
 
 case "$cmd" in
+  tar) tar_one $@;;
+  init) init_one $@;;
+  ls) _ls;;
+  rm) rm_one $@;;
+
+  arch) echo arches: $arches;;
+
+  init-all)     for_all_arch      "init_one"  ;;
+  tar-all)      for_all_arch      "tar_one"   ;;
+  init-missing) for_all_arch      "check_one" ;;
+  rm-all)       for_existing_arch "rm_one"    ;;
+  redo-init)    for_existing_arch "init_one"  ;;
+  tar-built)    for_existing_arch "tar_one"   ;;
+
+  chroot)
+    [ "$args" == "" ] && get_arch ""
+    arch=$1; shift
+    chroot_one $@
+    ;;
+
   -h | help | --help)
     _cmd=$@
     show_help "$_cmd"
     ;;
-  arch)
-    echo arches: $arches
-    ;;
-  chroot)
-    [ "$args" == "" ] && get_arch ""
-    arch=$1; shift; args=$@
-    check_target_root
-    [ "$args" == "" ] && args="bash"
-    arch_chroot $root $args
-    ;;
-  tar)
-    tar_one $@
-    ;;
-  tar-built)
-    for _arch in $(ls_roots); do tar_one $_arch; done
-    ;;
-  tar-all)
-    for _arch in $arches; do tar_one $_arch; done
-    ;;
-  init)
-    init_one $@
-    ;;
-  redo-init)
-    for _arch in $(ls_roots); do init_one $_arch; done
-    ;;
-  init-missing)
-    for _arch in $arches; do check_one $_arch; done
-    _ls
-    ;;
-  init-all)
-    for _arch in $arches; do init_one $_arch; done
-    ;;
-  ls)
-    _ls
-    ;;
-  rm)
-    rm_one $@
-    ;;
-  rm-all)
-    for _arch in $(ls_roots); do rm_one $_arch; done
-    ;;
+
   *)
     echo cmd provided: $cmd
     show_help
