@@ -4,7 +4,87 @@
 set -euo pipefail
 export BASHOPTS SHELLOPTS
 sudo=sudo
-export tarball_dir=/run/host/home/alpine-qemu-rootfs
+export rootfs_tarballs=/run/host/home/alpine-qemu-rootfs-tarballs
+
+valid_cmds="chroot tar tar-built tar-all init init-all ls rm rm-all arch help -h --help"
+
+function usage () {
+  echo "usage: $script $@"
+}
+
+function show_help_help () {
+  local item=$@
+  usage "$item <cmd>
+        help for cmd, one of: $valid_cmds"
+  usage "$item
+        this help"
+}
+
+function show_item_help () {
+  local item=$@
+  case "$item" in
+    -h | help | --help)
+      show_help_help $@
+      ;;
+    arch)
+      usage "$item
+        show avaliable architectures"
+      ;;
+    chroot)
+      usage "$item <arch>
+        enter chroot for <arch>, initialize if no root for <arch> exists"
+      ;;
+    tar)
+      usage "$item <arch>
+        make tarball for <arch>, initialize if no root for <arch> exists"
+      ;;
+    tar-built)
+      usage "$item
+        make tarballs for architectures that have roots built"
+      ;;
+    tar-all)
+      usage "$item
+        make tarballs for all available architectures, initializing the roots as needed"
+      ;;
+    init)
+      usage "$item <arch>
+        create root for given architecture"
+      ;;
+    init-all)
+      usage "$item
+        create roots for all available architectures"
+      ;;
+    ls)
+      usage "$item
+        list architectures with initialized roots"
+      ;;
+    rm)
+      usage "$item <arch>
+        remove root for given architecture"
+      ;;
+    rm-all)
+      usage "$item <arch>
+        remove initialized roots for all architectures"
+      ;;
+    *)
+      echo "unknown command: $item"
+      show_help_help help
+      exit 1
+      ;;
+  esac
+}
+
+function show_help () {
+  local item=$@
+  if [ "$item" == "" ]; then
+    usage "<cmd>
+        where cmd is one of: $valid_cmds"
+    show_item_help help
+    return
+  fi
+  show_item_help $item
+}
+
 
 function _ls_roots () {
   for r in /mnt/bootstraps/alpine-*-test.mnt; do
@@ -46,7 +126,7 @@ function _arch_chroot () {
   local _root=${1}; shift
   $sudo rm -vf $root/etc/resolv.conf
   local cmd=$@
-  if [ "$arch" == "i386" ]; then
+  if [ "$arch" == "x32" ]; then
     local pre="setarch i386"
   else
     local pre=""
@@ -167,7 +247,40 @@ function setup_arch () {
 __END__
 );}
 
+function get_arch () {
+  local _args=$@
+  if [ "$_args" == "" ]; then
+    echo Missing "<ARCH>" for $cmd
+    show_item_help $cmd
+    exit 1
+  else
+    arch=$_args
+    setup_arch $invalid_ok
+  fi
+}
+
+function rm_one () {
+  invalid_ok=yes
+  get_arch $@
+  rm_root $root_src $root
+}
+
+function tar_one () {
+  get_arch $@
+  check_target_root
+  sudo bash -c '
+    set -euo pipefail;
+    mkdir -pv '${rootfs_tarballs}'
+    tar='${rootfs_tarballs}'/$(basename '${root_src}'.tar);
+    rm -f $tar; set -x;
+    cd '${root_src}';
+    tar cf $tar .;
+    du -h $tar;
+  '
+}
+
 args=$@
+script=$0
 arch="unknown"
 
 if [ "$args" == "" ]; then
@@ -179,41 +292,11 @@ fi
 
 invalid_ok="no"
 
-function get_arch () {
-  local _args=$@
-  if [ "$_args" == "" ]; then
-    echo Missing "<ARCH>" for $cmd
-    exit 1
-  else
-    arch=$1
-    setup_arch $invalid_ok
-  fi
-}
-
-function rm_one () {
-  invalid_ok=yes
-  get_arch $1
-  rm_root $root_src $root
-}
-
-function tar_one () {
-  get_arch $1
-  check_target_root
-  sudo bash -c '
-    set -euo pipefail;
-    mkdir -pv '${tarball_dir}'
-    tar='${tarball_dir}'/$(basename '${root_src}'.tar);
-    rm -f $tar; set -x;
-    cd '${root_src}';
-    tar cf $tar .;
-    du -h $tar;
-  '
-}
-
-valid_cmds="chroot tar tar-built tar-all init init-all ls rm rm-all arch"
-
-
 case "$cmd" in
+  -h | help | --help)
+    _cmd=$@
+    show_help "$_cmd"
+    ;;
   arch)
     echo arches: $arches
     ;;
@@ -243,19 +326,17 @@ case "$cmd" in
     done
     ;;
   ls)
-    echo -n "built : "
-    ls_roots
+    printf 'built : %s\n' "$(ls_roots)"
     ;;
   rm)
     rm_one $@
     ;;
   rm-all)
-    arches=$(ls_roots)
-    for _arch in $arches; do rm_one $_arch; done
+    for _arch in $(ls_roots); do rm_one $_arch; done
     ;;
   *)
-    echo provided: $cmd
-    echo must provide a valid command: $valid_cmds
+    echo cmd provided: $cmd
+    show_help
     exit 1
     ;;
 esac
