@@ -329,7 +329,7 @@ function main() {
   if [ "$args" == "" ]; then
     local cmd="none"
   else
-    local cmd=$1; shift; args=$@
+    local cmd=$1; shift; local args=$@
   fi
 
   case "$cmd" in
