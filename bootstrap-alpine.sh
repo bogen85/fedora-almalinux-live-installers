@@ -134,6 +134,7 @@ function mkrootname () {
 }
 
 function _ls_roots () {
+  local r
   for r in $(eval "echo -n $bootstraps/$(mkrootname).mnt"); do
     basename $r \
       | sed -e 's/^'${rootname_prefix}'//' -e 's/'${rootname_suffix}'.mnt$//'
@@ -304,14 +305,12 @@ function _ls () {
   printf 'built : %s\n' "$(ls_roots)"
 }
 
-function for_existing_arch () {
-  local fun=$@
-  for _arch in $(ls_roots); do $fun $_arch; done
-}
-
-function for_all_arch () {
-  local fun=$@
-  for _arch in $arches; do $fun $_arch; done
+function for_archs () {
+  local fun=$1
+  shift
+  local _arches=$@
+  local _arch
+  for _arch in $_arches; do $fun $_arch; done
 }
 
 function chroot_one () {
@@ -343,12 +342,13 @@ function main() {
 
     arch) echo arches: $arches;;
 
-    init-all)     for_all_arch      "init_one"  ;;
-    tar-all)      for_all_arch      "tar_one"   ;;
-    init-missing) for_all_arch      "check_one" ;;
-    rm-all)       for_existing_arch "rm_one"    ;;
-    redo-init)    for_existing_arch "init_one"  ;;
-    tar-built)    for_existing_arch "tar_one"   ;;
+    init-all)     for_archs "init_one"   $arches;;
+    tar-all)      for_archs "tar_one"    $arches;;
+    init-missing) for_archs "check_one"  $arches;;
+
+    rm-all)       for_archs "rm_one"     $(ls_roots);;
+    redo-init)    for_archs "init_one"   $(ls_roots);;
+    tar-built)    for_archs "tar_one"    $(ls_roots);;
 
     chroot)
       [ "$args" == "" ] && get_arch ""
