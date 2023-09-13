@@ -220,9 +220,11 @@ function bootstrap () {
   printf '%s\n' $repos | $sudo tee $root/etc/apk/repositories
 
   arch_chroot $root setup-hostname $hostname
-  arch_chroot $root apk update
-  arch_chroot $root apk upgrade
+
+  local auu="'apk update --quiet && apk upgrade'"
+  arch_chroot $root sh -c "$auu"
   [ "" == "$pkg2" ] || arch_chroot $root apk add $pkg2
+  arch_chroot $root sh -c "$auu"
 }
 
 function setup_arch () {
