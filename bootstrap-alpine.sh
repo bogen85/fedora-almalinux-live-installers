@@ -4,6 +4,7 @@
 set -euo pipefail
 export BASHOPTS SHELLOPTS
 sudo=sudo
+apk=$(which apk)
 bootstraps=/mnt/bootstraps
 
 export rootfs_tarballs=/run/host/home/alpine-qemu-rootfs-tarballs
@@ -16,27 +17,29 @@ arches="aarch64 armhf armv7 ppc64le riscv64 x32 x64"
 repo_root_url=https://dl-cdn.alpinelinux.org/alpine
 
 packages1=$(echo -n $(echo -n "
-  setarch bash alpine-base
-  bash-completion
-  clang
+  setarch alpine-base
   czmq-dev
   fakeroot
-  g++
-  gcc
   git
-  htop
-  joe
   make
   mosquitto-dev
-  openssh-client-default
   pkgconf
-  python3-dev
   micro
   mlocate
-  qt6-qtbase-dev"))
+"))
 
 __packages2__=$(echo -n $(echo -n "
-  "))
+  bash
+  bash-completion
+  joe
+  htop
+  openssh-client-default
+  clang
+  g++
+  gcc
+  qt6-qtbase-dev
+  python3-dev
+"))
 
 export packages2=""
 
@@ -150,8 +153,11 @@ function rm_root () {
   local _root_src=$1
   local _root=$2
   if [ -d "$_root" ]; then
-    $sudo umount $_root -Rv || true
-    $sudo rm -rf $_root $_root_src
+    if ! $sudo umount -Rv  $_root  ; then
+         $sudo umount -Rvl $_root || true
+    fi
+    $sudo rm -rf  $_root/* $_root_src/*
+    $sudo rm -rfv $_root/  $_root_src/
   fi
 }
 
@@ -164,7 +170,7 @@ function prep_root () {
   $sudo mkdir -pv $_root_src $_root
   $sudo mount -v -o bind $_root_src $_root
 
-  hqus=/home/qemu-user-static/
+  hqus=home/qemu-user-static/
   $sudo mkdir -pv $_root/$hqus $_root/etc
   $sudo rsync -av /run/host/$hqus $_root/$hqus
 
@@ -176,7 +182,7 @@ function _arch_chroot () {
   $sudo rm -vf $root/etc/resolv.conf
   local cmd=$@
   if [ "$arch" == "x32" ]; then
-    local pre="setarch i386"
+    local pre="setarch linux32"
   else
     local pre=""
   fi
@@ -190,7 +196,7 @@ function _arch_chroot () {
     $sudo rm -vf $root/etc/resolv.conf $root/root/script
   }
 
-  if $sudo arch-chroot $root bash /root/script; then
+  if $sudo arch-chroot $root sh /root/script; then
     cleanup
   else
     cleanup
@@ -206,7 +212,7 @@ function bootstrap () {
   local pkg1=$packages1
   local pkg2=$packages2
 
-  $sudo apk --arch $alpine_arch \
+  $sudo $apk --arch $alpine_arch \
     -X $repo_root_url/$flavor/main/ \
     -X $repo_root_url/$flavor/community/ \
     -U --allow-untrusted --root $root --initdb add $pkg1
@@ -229,12 +235,12 @@ function setup_arch () {
   export flavor=latest-stable
   packages2=$__packages2__
   case $arch in
-    armhf | armv7 | aarch64)  packages2+="fpc";;
+    armhf | armv7 | aarch64)  packages2+=" fpc";;
 
-    x64)  packages2+="fpc"; export alpine_arch=x86_64;;
-    x32)  packages2+="fpc"; export alpine_arch=x86;;
+    x64)  packages2+=" fpc"; export alpine_arch=x86_64;;
+    x32)  packages2+=" fpc"; export alpine_arch=x86;;
 
-    ppc64le)  packages2+="fpc-stage0" ;;
+    ppc64le)  packages2+=" fpc-stage0" ;;
     riscv64)  echo WIP: $arch;  export flavor=edge;;
 
     *) printf 'Invalid arch: %s\nValid: %s\n' "$arch" "$arches"; exit 1;;
